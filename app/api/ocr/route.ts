@@ -18,8 +18,8 @@ function parseBulgarianID(text: string) {
     if (m[1] !== data.egn?.slice(0, 9)) { data.id_card_number = m[1]; break; }
   }
 
-  // MRZ lines
-  const mrzLines = lines.filter(l => l.length >= 20 && /^[A-Z0-9<]+$/.test(l));
+  // MRZ lines (uppercase latin + digits + <)
+  const mrzLines = lines.filter(l => l.length >= 20 && /^[A-Z0-9<]{20,}$/.test(l));
   if (mrzLines.length >= 1) {
     const nameLine = mrzLines[mrzLines.length - 1];
     const parts = nameLine.replace(/</g, ' ').trim().split(/\s{2,}/);
@@ -70,38 +70,43 @@ function parseBulgarianID(text: string) {
   return data;
 }
 
-async function ocrWithOCRSpace(base64: string): Promise<string> {
-  const apiKey = process.env.OCR_SPACE_API_KEY;
-  if (!apiKey) throw new Error('OCR_SPACE_API_KEY не е настроен');
-
-  // Ensure proper data URL format
-  const dataUrl = base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`;
-
+async function ocrRequest(dataUrl: string, language: string, engine: string): Promise<string> {
+  const apiKey = process.env.OCR_SPACE_API_KEY!;
   const form = new FormData();
   form.append('apikey', apiKey);
   form.append('base64Image', dataUrl);
-  form.append('language', 'bul');
+  form.append('language', language);
   form.append('isOverlayRequired', 'false');
   form.append('detectOrientation', 'true');
   form.append('scale', 'true');
-  form.append('OCREngine', '2');
-
-  const res = await fetch('https://api.ocr.space/parse/image', {
-    method: 'POST',
-    body: form,
-  });
+  form.append('isTable', 'false');
+  form.append('OCREngine', engine);
+  const res = await fetch('https://api.ocr.space/parse/image', { method: 'POST', body: form });
   const d = await res.json();
-  if (d.IsErroredOnProcessing) throw new Error(d.ErrorMessage?.[0] || 'OCR.space грешка');
+  if (d.IsErroredOnProcessing) return '';
   return d.ParsedResults?.map((r: any) => r.ParsedText).join('\n') || '';
+}
+
+async function ocrImage(base64: string): Promise<string> {
+  const dataUrl = base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`;
+  // Try Bulgarian first (Engine 1 = Tesseract, supports Cyrillic)
+  const bulText = await ocrRequest(dataUrl, 'bul', '1');
+  // Try English for MRZ zone (Engine 1)
+  const engText = await ocrRequest(dataUrl, 'eng', '1');
+  // Combine both results
+  return `${bulText}\n${engText}`;
 }
 
 export async function POST(req: NextRequest) {
   try {
+    const apiKey = process.env.OCR_SPACE_API_KEY;
+    if (!apiKey) return NextResponse.json({ error: 'OCR_SPACE_API_KEY не е настроен' }, { status: 500 });
+
     const body = await req.json();
     const imageList: string[] = body.images ?? (body.image ? [body.image] : []);
     if (!imageList.length) return NextResponse.json({ error: 'No image' }, { status: 400 });
 
-    const texts = await Promise.all(imageList.map(img => ocrWithOCRSpace(img)));
+    const texts = await Promise.all(imageList.map(img => ocrImage(img)));
     const combinedText = texts.join('\n');
 
     if (!combinedText.trim())
