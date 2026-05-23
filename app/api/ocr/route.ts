@@ -1,34 +1,134 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
+function lineAfter(lines: string[], pattern: RegExp): string | null {
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (pattern.test(lines[i].trim())) {
+      for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+        const v = lines[j].trim();
+        if (v) return v;
+      }
+    }
+  }
+  return null;
+}
+
+function parseDate(s: string | null): string | null {
+  if (!s) return null;
+  const m = s.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  const m2 = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m2) return s;
+  return null;
+}
+
+function parseBulgarianId(text: string) {
+  const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+
+  const lastName   = lineAfter(lines, /^Фамилия$/);
+  const firstName  = lineAfter(lines, /^Име$/);
+  const middleName = lineAfter(lines, /^Презиме$/);
+
+  // EGN: 10-digit number
+  const egnMatch = text.match(/\b(\d{10})\b/);
+  const egn = egnMatch ? egnMatch[1] : null;
+
+  // ID card number: 9 digits
+  const idMatch = text.match(/\b(\d{9})\b/);
+  const idCardNumber = idMatch ? idMatch[1] : null;
+
+  // Issued by
+  const issuedBy = lineAfter(lines, /^(Издадена?\s*от|Authority)$/i);
+
+  // Dates
+  const issuedDateRaw  = lineAfter(lines, /^(Дата\s*на\s*издаване|Date of issue)$/i);
+  const expiryRaw      = lineAfter(lines, /^(Валидно\s*до|Expiry|Valid until)$/i);
+
+  // Try MRZ for expiry if not found
+  let expiryFromMrz: string | null = null;
+  for (const line of lines) {
+    if (/^[A-Z0-9<]{30,44}$/.test(line)) {
+      // MRZ line 2: positions 13-18 = birth date YYMMDD, 19 = check, 20-25 = expiry YYMMDD
+      const exp = line.substring(19, 25);
+      if (/^\d{6}$/.test(exp)) {
+        const yy = parseInt(exp.substring(0, 2));
+        const mm = exp.substring(2, 4);
+        const dd = exp.substring(4, 6);
+        const yyyy = yy > 30 ? `19${yy.toString().padStart(2,'0')}` : `20${yy.toString().padStart(2,'0')}`;
+        expiryFromMrz = `${yyyy}-${mm}-${dd}`;
+      }
+    }
+  }
+
+  // Address from back side
+  const addressLine = lineAfter(lines, /^(Пос႐оянен\s*адрес|Адрес|Address)$/i)
+    || lineAfter(lines, /^Перманент\s*адрес$/i);
+
+  const cityLine = lineAfter(lines, /^(Населено\s*място|Град|City)$/i);
+  const muniLine = lineAfter(lines, /^(Община|Municipality)$/i);
+
+  return {
+    last_name:            lastName,
+    first_name:           firstName,
+    middle_name:          middleName,
+    egn:                  egn,
+    id_card_number:       idCardNumber,
+    id_card_issued_by:    issuedBy,
+    id_card_issued_date:  parseDate(issuedDateRaw),
+    id_card_expiry:       parseDate(expiryRaw) || expiryFromMrz,
+    address:              addressLine,
+    city:                 cityLine,
+    municipality:         muniLine,
+  };
+}
+
+async function ocrWithGoogleVision(base64: string): Promise<string> {
+  const apiKey = process.env.GOOGLE_VISION_API_KEY;
+  if (!apiKey) throw new Error('GOOGLE_VISION_API_KEY not set');
+
+  const res = await fetch(
+    `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requests: [{
+          image: { content: base64 },
+          features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+        }],
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Vision API error ${res.status}: ${err}`);
+  }
+
+  const json = await res.json();
+  const text = json.responses?.[0]?.fullTextAnnotation?.text
+    || json.responses?.[0]?.textAnnotations?.[0]?.description
+    || '';
+  return text;
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { image } = await req.json();
-    if (!image) return NextResponse.json({ error: 'No image' }, { status: 400 });
+    const body = await req.json();
+    const images: string[] = body.images || (body.image ? [body.image] : []);
+    if (!images.length) return NextResponse.json({ error: 'No images' }, { status: 400 });
 
-    const base64 = image.replace(/^data:image\/\w+;base64,/, '');
-    const mediaType = (image.match(/^data:(image\/\w+);/)?.[1] || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+    let combinedText = '';
+    for (const img of images) {
+      const base64 = img.replace(/^data:image\/\w+;base64,/, '');
+      const text = await ocrWithGoogleVision(base64);
+      combinedText += text + '\n';
+    }
 
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const msg = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-          { type: 'text', text: 'This is a Bulgarian identity card. Extract ALL the following fields and return ONLY valid JSON: first_name (Име in Cyrillic), last_name (Фамилия in Cyrillic), middle_name (Презиме/баща in Cyrillic), egn (ЕГН/Personal No - 10 digits), id_card_number (№ на документа - 9 digits), id_card_issued_by (Издаден от/Authority), id_card_issued_date (Дата на издаване - format YYYY-MM-DD), id_card_expiry (Валидност - format YYYY-MM-DD), address (full street address from back), city, municipality. Return JSON only, no markdown.' },
-        ],
-      }],
-    });
-
-    const text = msg.content.filter(c => c.type === 'text').map((c: any) => c.text).join('');
-    const clean = text.replace(/```json|```/g, '').trim();
-    const data = JSON.parse(clean);
-    return NextResponse.json({ data });
+    const data = parseBulgarianId(combinedText);
+    return NextResponse.json({ data, rawText: combinedText });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
