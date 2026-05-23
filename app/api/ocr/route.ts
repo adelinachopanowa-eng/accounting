@@ -18,7 +18,7 @@ function parseBulgarianID(text: string) {
     if (m[1] !== data.egn?.slice(0, 9)) { data.id_card_number = m[1]; break; }
   }
 
-  // MRZ lines (uppercase latin + digits + <)
+  // MRZ lines
   const mrzLines = lines.filter(l => l.length >= 20 && /^[A-Z0-9<]{20,}$/.test(l));
   if (mrzLines.length >= 1) {
     const nameLine = mrzLines[mrzLines.length - 1];
@@ -41,7 +41,6 @@ function parseBulgarianID(text: string) {
     }
   }
 
-  // Cyrillic names
   if (!data.last_name) {
     const cyrNames = lines.filter(l => /^[А-ЯЁ][А-ЯЁа-яё\-]+$/.test(l) && l.length > 2);
     if (cyrNames[0]) data.last_name = toTitleCase(cyrNames[0]);
@@ -49,64 +48,53 @@ function parseBulgarianID(text: string) {
     if (cyrNames[2]) data.middle_name = toTitleCase(cyrNames[2]);
   }
 
-  // Dates DD.MM.YYYY
   const dateMatches = [...text.matchAll(/(\d{2})\.(\d{2})\.(\d{4})/g)];
   if (dateMatches[0]) data.id_card_issued_date = `${dateMatches[0][3]}-${dateMatches[0][2]}-${dateMatches[0][1]}`;
   if (dateMatches[1] && !data.id_card_expiry) data.id_card_expiry = `${dateMatches[1][3]}-${dateMatches[1][2]}-${dateMatches[1][1]}`;
 
-  // Issued by MVR
   const issuedMatch = text.match(/(?:МВР|MVR)[\s\-]+([^.\n]+)/);
   if (issuedMatch) data.id_card_issued_by = 'MVR ' + issuedMatch[1].trim();
   else if (text.match(/МВР|MVR/)) data.id_card_issued_by = 'МВР';
 
-  // City
   const cityMatch = text.match(/(?:гр\.?|ГР\.?)\s*([А-ЯЁ][а-яёА-ЯЁ]+)/);
   if (cityMatch) data.city = toTitleCase(cityMatch[1]);
 
-  // Address
   const addrMatch = text.match(/(?:ул\.?|бул\.?|жк\.?)[\s]*([^.\n]{5,})/);
   if (addrMatch) data.address = addrMatch[1].trim();
 
   return data;
 }
 
-async function ocrRequest(dataUrl: string, language: string, engine: string): Promise<string> {
-  const apiKey = process.env.OCR_SPACE_API_KEY!;
-  const form = new FormData();
-  form.append('apikey', apiKey);
-  form.append('base64Image', dataUrl);
-  form.append('language', language);
-  form.append('isOverlayRequired', 'false');
-  form.append('detectOrientation', 'true');
-  form.append('scale', 'true');
-  form.append('isTable', 'false');
-  form.append('OCREngine', engine);
-  const res = await fetch('https://api.ocr.space/parse/image', { method: 'POST', body: form });
+async function visionOCR(base64: string, apiKey: string): Promise<string> {
+  const content = base64.includes(',') ? base64.split(',')[1] : base64;
+  const res = await fetch(
+    `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requests: [{
+          image: { content },
+          features: [{ type: 'TEXT_DETECTION', maxResults: 1 }],
+        }],
+      }),
+    }
+  );
   const d = await res.json();
-  if (d.IsErroredOnProcessing) return '';
-  return d.ParsedResults?.map((r: any) => r.ParsedText).join('\n') || '';
-}
-
-async function ocrImage(base64: string): Promise<string> {
-  const dataUrl = base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`;
-  // Try Bulgarian first (Engine 1 = Tesseract, supports Cyrillic)
-  const bulText = await ocrRequest(dataUrl, 'bul', '1');
-  // Try English for MRZ zone (Engine 1)
-  const engText = await ocrRequest(dataUrl, 'eng', '1');
-  // Combine both results
-  return `${bulText}\n${engText}`;
+  if (d.error) throw new Error(d.error.message);
+  return d.responses?.[0]?.fullTextAnnotation?.text || '';
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const apiKey = process.env.OCR_SPACE_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: 'OCR_SPACE_API_KEY не е настроен' }, { status: 500 });
+    const apiKey = process.env.GOOGLE_VISION_API_KEY;
+    if (!apiKey) return NextResponse.json({ error: 'GOOGLE_VISION_API_KEY не е настроен' }, { status: 500 });
 
     const body = await req.json();
     const imageList: string[] = body.images ?? (body.image ? [body.image] : []);
     if (!imageList.length) return NextResponse.json({ error: 'No image' }, { status: 400 });
 
-    const texts = await Promise.all(imageList.map(img => ocrImage(img)));
+    const texts = await Promise.all(imageList.map(img => visionOCR(img, apiKey)));
     const combinedText = texts.join('\n');
 
     if (!combinedText.trim())
