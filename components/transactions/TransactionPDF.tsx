@@ -1,5 +1,5 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import { format } from 'date-fns';
 
 const OPERATOR = 'Милан Иванов Шопов';
@@ -10,22 +10,8 @@ const COMPANY_EIK = '130975863';
 const PERMISSION = '12-ДО-00001270-00/05.06.2013 г.';
 const WAREHOUSE = '304 Склад стоки';
 
-// Full Roboto TTF (Latin + Cyrillic) served from jsDelivr CDN via Google Fonts GitHub
-Font.register({
-  family: 'Roboto',
-  fonts: [
-    {
-      src: 'https://cdn.jsdelivr.net/gh/google/fonts/apache/roboto/static/Roboto-Regular.ttf',
-      fontWeight: 'normal',
-    },
-    {
-      src: 'https://cdn.jsdelivr.net/gh/google/fonts/apache/roboto/static/Roboto-Bold.ttf',
-      fontWeight: 'bold',
-    },
-  ],
-});
+// Font is registered in the API route before rendering
 
-// ---- Bulgarian number-to-words ----
 const ONES   = ['', 'един', 'два', 'три', 'четири', 'пет', 'шест', 'седем', 'осем', 'девет'];
 const ONES_F = ['', 'една', 'две', 'три', 'четири', 'пет', 'шест', 'седем', 'осем', 'девет'];
 const TEENS  = ['десет', 'единадесет', 'дванадесет', 'тринадесет', 'четиринадесет', 'петнадесет', 'шестнадесет', 'седемнадесет', 'осемнадесет', 'деветнадесет'];
@@ -42,7 +28,6 @@ function u100(n: number, fem = false): string {
   const t = Math.floor(r / 10), o = r % 10;
   return s + (s ? ' ' : '') + TENS[t] + (o ? ' и ' + (fem ? ONES_F : ONES)[o] : '');
 }
-
 function intWords(n: number, abbr = false): string {
   if (!n) return 'нула';
   const th = Math.floor(n / 1000), r = n % 1000;
@@ -55,60 +40,59 @@ function intWords(n: number, abbr = false): string {
   if (r) s += (th ? (r < 100 ? ' и ' : ' ') : '') + u100(r);
   return s;
 }
-
 function cap(s: string) { return s.charAt(0).toUpperCase() + s.slice(1); }
-function amountWords(n: number): string {
+function amountWords(n: number) {
   const lv = Math.floor(n), st = Math.round((n - lv) * 100);
   return cap(intWords(lv)) + ' лв. и ' + String(st).padStart(2, '0') + ' ст.';
 }
-function qtyWords(n: number): string {
+function qtyWords(n: number) {
   const kg = Math.floor(n), gr = Math.round((n - kg) * 100);
   return cap(intWords(kg, true)) + ' kg и ' + String(gr).padStart(2, '0') + ' gr';
 }
-function fmtD(d: string): string {
+function fmtD(d: string) {
   if (!d) return '';
   if (d.includes('-')) { const [y,m,dd] = d.split('-'); return `${dd}.${m}.${y}`; }
   return d;
 }
-function fmtN(n: number, dec = 2): string {
+function fmtN(n: number, dec = 2) {
   return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
 
-// ---- Styles ----
+const F = 'Roboto';
 const s = StyleSheet.create({
-  page:  { padding: '8mm 12mm 14mm 12mm', fontSize: 8, fontFamily: 'Roboto', color: '#000' },
-  hdrRow: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 0.5, borderColor: '#000', paddingBottom: 2, marginBottom: 3 },
-  hdrBold: { fontWeight: 'bold', fontSize: 8.5 },
-  row3: { flexDirection: 'row', alignItems: 'flex-start' },
+  page:     { padding: '8mm 12mm 14mm 12mm', fontSize: 8, fontFamily: F },
+  hdrRow:   { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 0.5, borderColor: '#000', paddingBottom: 2, marginBottom: 3 },
+  hdrBold:  { fontWeight: 'bold', fontSize: 8.5, fontFamily: F },
+  row3:     { flexDirection: 'row', alignItems: 'flex-start' },
   pisLeft:  { width: '18%', fontSize: 7 },
   pisMid:   { width: '54%', textAlign: 'center' },
   pisRight: { width: '28%', textAlign: 'right', fontSize: 6.5 },
-  pisTitle: { fontSize: 11, fontWeight: 'bold' },
-  noRow: { flexDirection: 'row', marginBottom: 3 },
-  noCell: { fontWeight: 'bold', fontSize: 9 },
-  ln: { marginBottom: 1.5 },
-  tbl:  { borderWidth: 0.5, borderColor: '#000', marginTop: 2, marginBottom: 2 },
-  tr:   { flexDirection: 'row', borderBottomWidth: 0.5, borderColor: '#000' },
-  trL:  { flexDirection: 'row' },
-  th:   { padding: '2 2', borderRightWidth: 0.5, borderColor: '#000', fontWeight: 'bold', fontSize: 7, textAlign: 'center' },
-  td:   { padding: '2 3', borderRightWidth: 0.5, borderColor: '#000', fontSize: 7.5 },
-  tdX:  { padding: '2 3', fontSize: 7.5 },
-  c0: { width: '5%' }, c1: { width: '43%' }, c2: { width: '8%', textAlign: 'center' },
-  c3: { width: '14%', textAlign: 'right' }, c4: { width: '13%', textAlign: 'right' }, c5: { width: '17%', textAlign: 'right' },
-  slovomRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
-  sigRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 },
-  sigBox: { width: '46%' },
-  sigLabel: { marginBottom: 8 },
-  sigLine: { borderBottomWidth: 0.5, borderColor: '#000', marginBottom: 1 },
-  sigName: { textAlign: 'center', fontSize: 7.5 },
-  sigNote: { textAlign: 'center', fontSize: 6.5 },
-  divider: { borderBottomWidth: 0.5, borderColor: '#000', marginVertical: 3 },
-  declTR: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2, alignItems: 'flex-start' },
-  declTitle: { fontWeight: 'bold', fontSize: 8.5, flex: 1, textAlign: 'center' },
-  declRef: { fontSize: 6.5, width: '32%', textAlign: 'right' },
-  ctTitle: { fontWeight: 'bold', fontSize: 9, textAlign: 'center', marginBottom: 2 },
-  ctText: { marginBottom: 1.5, lineHeight: 1.35 },
-  footer: { position: 'absolute', bottom: '6mm', left: '12mm', right: '12mm', flexDirection: 'row', justifyContent: 'space-between', fontSize: 6.5, borderTopWidth: 0.5, borderColor: '#000', paddingTop: 1.5 },
+  pisTitle: { fontSize: 11, fontWeight: 'bold', fontFamily: F },
+  noRow:    { flexDirection: 'row', marginBottom: 3 },
+  noCell:   { fontWeight: 'bold', fontSize: 9, fontFamily: F },
+  ln:       { marginBottom: 1.5 },
+  tbl:      { borderWidth: 0.5, borderColor: '#000', marginTop: 2, marginBottom: 2 },
+  tr:       { flexDirection: 'row', borderBottomWidth: 0.5, borderColor: '#000' },
+  trL:      { flexDirection: 'row' },
+  th:       { padding: '2 2', borderRightWidth: 0.5, borderColor: '#000', fontWeight: 'bold', fontSize: 7, textAlign: 'center', fontFamily: F },
+  td:       { padding: '2 3', borderRightWidth: 0.5, borderColor: '#000', fontSize: 7.5 },
+  tdX:      { padding: '2 3', fontSize: 7.5 },
+  c0: { width: '5%' }, c1: { width: '43%' }, c2: { width: '8%' },
+  c3: { width: '14%' }, c4: { width: '13%' }, c5: { width: '17%' },
+  slovom:   { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
+  sigRow:   { flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 },
+  sigBox:   { width: '46%' },
+  sigLbl:   { marginBottom: 8 },
+  sigLine:  { borderBottomWidth: 0.5, borderColor: '#000', marginBottom: 1 },
+  sigName:  { textAlign: 'center', fontSize: 7.5 },
+  sigNote:  { textAlign: 'center', fontSize: 6.5 },
+  div:      { borderBottomWidth: 0.5, borderColor: '#000', marginVertical: 3 },
+  declTR:   { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
+  declTit:  { fontWeight: 'bold', fontSize: 8.5, flex: 1, textAlign: 'center', fontFamily: F },
+  declRef:  { fontSize: 6.5, width: '32%', textAlign: 'right' },
+  ctTit:    { fontWeight: 'bold', fontSize: 9, textAlign: 'center', marginBottom: 2, fontFamily: F },
+  ctTxt:    { marginBottom: 1.5, lineHeight: 1.35 },
+  footer:   { position: 'absolute', bottom: '6mm', left: '12mm', right: '12mm', flexDirection: 'row', justifyContent: 'space-between', fontSize: 6.5, borderTopWidth: 0.5, borderColor: '#000', paddingTop: 1.5 },
 });
 
 export default function TransactionPDF({ transaction }: { transaction: any }) {
@@ -126,21 +110,19 @@ export default function TransactionPDF({ transaction }: { transaction: any }) {
   return (
     <Document>
       <Page size="A4" style={s.page}>
-        {/* HEADER */}
         <View style={s.hdrRow}>
           <Text style={s.hdrBold}>{COMPANY}</Text>
           <Text>{COMPANY_ADDR}</Text>
           <Text>ИН по ЗДДС: {COMPANY_VAT} ИН: {COMPANY_EIK}</Text>
         </View>
 
-        {/* ПИС TITLE */}
         <View style={[s.row3, { marginBottom: 1 }]}>
           <View style={s.pisLeft}><Text>{WAREHOUSE}</Text></View>
           <View style={s.pisMid}><Text style={s.pisTitle}>Покупко - изплащателна сметка</Text></View>
           <View style={s.pisRight}>
             <Text>No и Дата на разрешението:</Text>
             <Text>{PERMISSION}</Text>
-            {isBank && <Text style={{ fontWeight: 'bold' }}>Плащане по банков път</Text>}
+            {isBank && <Text style={{ fontWeight: 'bold', fontFamily: F }}>Плащане по банков път</Text>}
           </View>
         </View>
 
@@ -154,7 +136,6 @@ export default function TransactionPDF({ transaction }: { transaction: any }) {
         <Text style={s.ln}>от МВР {issuedCity} обл.{'   '}град (с) {c.city}{'   '}община {mun}{'   '}адрес {c.address}</Text>
         <Text style={[s.ln, { marginBottom: 1 }]}>удостоверявам, че предадох:</Text>
 
-        {/* TABLE */}
         <View style={s.tbl}>
           <View style={s.tr}>
             <Text style={[s.th, s.c0]}>No</Text>
@@ -174,38 +155,37 @@ export default function TransactionPDF({ transaction }: { transaction: any }) {
                 <Text style={[s.td, s.c0]}>{i + 1}</Text>
                 <Text style={[s.td, s.c1]}>{nameStr}</Text>
                 <Text style={[s.td, s.c2, { textAlign: 'center' }]}>{nom.unit || 'kg'}</Text>
-                <Text style={[s.td, s.c3]}>{fmtN(Number(it.quantity), 2)}</Text>
-                <Text style={[s.td, s.c4]}>{fmtN(Number(it.unit_price), 4)}</Text>
-                <Text style={[s.tdX, s.c5]}>{fmtN(Number(it.total_price), 2)}</Text>
+                <Text style={[s.td, s.c3, { textAlign: 'right' }]}>{fmtN(Number(it.quantity), 2)}</Text>
+                <Text style={[s.td, s.c4, { textAlign: 'right' }]}>{fmtN(Number(it.unit_price), 4)}</Text>
+                <Text style={[s.tdX, s.c5, { textAlign: 'right' }]}>{fmtN(Number(it.total_price), 2)}</Text>
               </View>
             );
           })}
         </View>
 
-        <View style={s.slovomRow}>
+        <View style={s.slovom}>
           <Text>Словом общо:{'  '}{amountWords(total)}</Text>
           <Text>Сума за плащане:{'   '}{fmtN(total)}</Text>
         </View>
 
         <View style={s.sigRow}>
           <View style={s.sigBox}>
-            <Text style={s.sigLabel}>Купувач:</Text>
+            <Text style={s.sigLbl}>Купувач:</Text>
             <View style={s.sigLine} />
             <Text style={s.sigName}>{OPERATOR}</Text>
           </View>
           <View style={s.sigBox}>
-            <Text style={s.sigLabel}>Продавач:</Text>
+            <Text style={s.sigLbl}>Продавач:</Text>
             <View style={s.sigLine} />
             <Text style={s.sigNote}>(подпис на лицето, предало отпадъка)</Text>
             <Text style={s.sigName}>{fullName}</Text>
           </View>
         </View>
 
-        <View style={s.divider} />
+        <View style={s.div} />
 
-        {/* DECLARATION */}
         <View style={s.declTR}>
-          <Text style={s.declTitle}>Декларация за произход на отпадъци от черни и цветни метали</Text>
+          <Text style={s.declTit}>Декларация за произход на отпадъци от черни и цветни метали</Text>
           <Text style={s.declRef}>Образец № 1 към чл. 39, ал. 4 от ЗУО</Text>
         </View>
         <Text style={s.ln}>Долуподписаният/ата{'   '}{fullName}{'   '}ЕГН {c.egn}{'   '}град (с) {c.city}</Text>
@@ -232,32 +212,29 @@ export default function TransactionPDF({ transaction }: { transaction: any }) {
           </View>
         </View>
 
-        <View style={s.divider} />
+        <View style={s.div} />
 
-        {/* CONTRACT */}
-        <Text style={s.ctTitle}>Договор №{'   '}{no}{'   '}/{'   '}{txDate} г.</Text>
-        <Text style={s.ctText}>Днес,{'   '}{txDate} г. в{'   '}{c.city || 'София'}{'   '}, се сключи този договор за продажба между:</Text>
-        <Text style={s.ctText}>1. {COMPANY}{'   '}със седалище и адрес на управление {COMPANY_ADDR}</Text>
-        <Text style={s.ctText}>ИН: {COMPANY_EIK} представлявано от{'   '}{OPERATOR}{'   '}, наричан по-долу Купувач и</Text>
-        <Text style={s.ctText}>2. {fullName}{'   '}с адрес{'   '}{c.address}</Text>
-        <Text style={s.ctText}>ЕГН: {c.egn} л. к .{'   '}{c.id_card_number} издадена от МВР {issuedCity} обл. на {fmtD(c.id_card_issued_date)} наричан по-долу Продавач</Text>
-        <Text style={s.ctText}>Страните се споразумяха за следното:</Text>
-        <Text style={s.ctText}>1. Предмет на договора.</Text>
-        <Text style={s.ctText}>Продавача прехвърля на Купувача правото на собственост и му предава стоката, описана по-горе в ПИС № {no} / {txDate} , която е неразделна част от този договор, срещу задължението на Купувача да му заплати уговорената цена.</Text>
-        {isBank && (
-          <Text style={[s.ctText, { fontWeight: 'bold' }]}>Плащането ще се извърши по сметка: {transaction.bank_account}{'   '}{transaction.bank_name}{'   '}{transaction.bank_bic}</Text>
-        )}
-        <Text style={s.ctText}>2. Общи положения. Купувачът има право на обезщетение в размер на платената от него цена по този договор, ако бъде лишен от държането или бъде съдебно отстранен от закупените стоки поради това, че трети лица имат претенции за собствеността върху тях или неистинност на гореподписаната декларация.</Text>
-        <Text style={s.ctText}>Този договор се състави и подписа в два еднакви екземпляра, по един за всяка от страните.</Text>
+        <Text style={s.ctTit}>Договор №{'   '}{no}{'   '}/{'   '}{txDate} г.</Text>
+        <Text style={s.ctTxt}>Днес,{'   '}{txDate} г. в{'   '}{c.city || 'София'}{'   '}, се сключи този договор за продажба между:</Text>
+        <Text style={s.ctTxt}>1. {COMPANY}{'   '}със седалище и адрес на управление {COMPANY_ADDR}</Text>
+        <Text style={s.ctTxt}>ИН: {COMPANY_EIK} представлявано от{'   '}{OPERATOR}{'   '}, наричан по-долу Купувач и</Text>
+        <Text style={s.ctTxt}>2. {fullName}{'   '}с адрес{'   '}{c.address}</Text>
+        <Text style={s.ctTxt}>ЕГН: {c.egn} л. к .{'   '}{c.id_card_number} издадена от МВР {issuedCity} обл. на {fmtD(c.id_card_issued_date)} наричан по-долу Продавач</Text>
+        <Text style={s.ctTxt}>Страните се споразумяха за следното:</Text>
+        <Text style={s.ctTxt}>1. Предмет на договора.</Text>
+        <Text style={s.ctTxt}>Продавача прехвърля на Купувача правото на собственост и му предава стоката, описана по-горе в ПИС № {no} / {txDate} , която е неразделна част от този договор, срещу задължението на Купувача да му заплати уговорената цена.</Text>
+        {isBank && <Text style={[s.ctTxt, { fontWeight: 'bold', fontFamily: F }]}>Плащането ще се извърши по сметка: {transaction.bank_account}{'   '}{transaction.bank_name}{'   '}{transaction.bank_bic}</Text>}
+        <Text style={s.ctTxt}>2. Общи положения. Купувачът има право на обезщетение в размер на платената от него цена по този договор, ако бъде лишен от държането или бъде съдебно отстранен от закупените стоки поради това, че трети лица имат претенции за собствеността върху тях или неистинност на гореподписаната декларация.</Text>
+        <Text style={s.ctTxt}>Този договор се състави и подписа в два еднакви екземпляра, по един за всяка от страните.</Text>
 
         <View style={s.sigRow}>
           <View style={s.sigBox}>
-            <Text style={s.sigLabel}>Купувач:</Text>
+            <Text style={s.sigLbl}>Купувач:</Text>
             <View style={s.sigLine} />
             <Text style={s.sigName}>{OPERATOR}</Text>
           </View>
           <View style={s.sigBox}>
-            <Text style={s.sigLabel}>Продавач:</Text>
+            <Text style={s.sigLbl}>Продавач:</Text>
             <View style={s.sigLine} />
             <Text style={s.sigName}>{fullName}</Text>
           </View>
