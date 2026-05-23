@@ -18,7 +18,6 @@ function parseBulgarianID(text: string) {
     if (m[1] !== data.egn?.slice(0, 9)) { data.id_card_number = m[1]; break; }
   }
 
-  // MRZ lines
   const mrzLines = lines.filter(l => l.length >= 20 && /^[A-Z0-9<]{20,}$/.test(l));
   if (mrzLines.length >= 1) {
     const nameLine = mrzLines[mrzLines.length - 1];
@@ -100,7 +99,7 @@ export async function POST(req: NextRequest) {
     if (!combinedText.trim())
       return NextResponse.json({ error: 'Не е разпознат текст. Опитайте с по-ясна снимка.' }, { status: 422 });
 
-    return NextResponse.json({ data: parseBulgarianID(combinedText) });
+    return NextResponse.json({ data: parseBulgarianID(combinedText), rawText: combinedText });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'OCR грешка' }, { status: 500 });
   }
