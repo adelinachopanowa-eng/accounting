@@ -46,30 +46,32 @@ export default async function DashboardPage() {
   const breakdown = Array.from(breakMap.entries()).map(([name, value]) => ({ name, value }));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Табло</h1>
-        <Link href="/transactions/new" className="btn btn-primary">Нова сделка</Link>
+        <h1 className="text-xl md:text-2xl font-bold">Табло</h1>
+        <Link href="/transactions/new" className="btn btn-primary text-sm">+ Нова сделка</Link>
       </div>
       <StatsCards stats={stats} />
       <Charts daily={daily} breakdown={breakdown} />
       <div className="card">
-        <h2 className="text-lg font-semibold mb-4">Последни сделки</h2>
-        <table className="w-full text-sm">
-          <thead className="text-left text-slate-500 border-b">
-            <tr><th className="py-2">№</th><th>Дата</th><th>Клиент</th><th className="text-right">Сума</th></tr>
-          </thead>
-          <tbody>
-            {(recent || []).map((t: any) => (
-              <tr key={t.id} className="border-b hover:bg-slate-50">
-                <td className="py-2"><Link className="text-brand-600 hover:underline" href={`/api/pdf/${t.id}`}>{t.receipt_number}</Link></td>
-                <td>{format(new Date(t.transaction_date), 'dd.MM.yyyy HH:mm')}</td>
-                <td>{t.customers?.first_name} {t.customers?.last_name}</td>
-                <td className="text-right">{Number(t.total_amount).toFixed(2)} лв.</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <h2 className="text-base md:text-lg font-semibold mb-4">Последни сделки</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-slate-500 border-b">
+              <tr><th className="py-2">№</th><th>Дата</th><th className="hidden sm:table-cell">Клиент</th><th className="text-right">Сума</th></tr>
+            </thead>
+            <tbody>
+              {(recent || []).map((t: any) => (
+                <tr key={t.id} className="border-b hover:bg-slate-50">
+                  <td className="py-2"><Link className="text-brand-600 hover:underline" href={`/api/pdf/${t.id}`}>{t.receipt_number}</Link></td>
+                  <td>{format(new Date(t.transaction_date), 'dd.MM.yy HH:mm')}</td>
+                  <td className="hidden sm:table-cell">{t.customers?.first_name} {t.customers?.last_name}</td>
+                  <td className="text-right">{Number(t.total_amount).toFixed(2)} лв.</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
