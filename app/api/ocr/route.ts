@@ -1,127 +1,89 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
-
-function toTitleCase(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-}
+export const maxDuration = 60;
 
 function lineAfter(lines: string[], pattern: RegExp): string | null {
   for (let i = 0; i < lines.length - 1; i++) {
-    if (pattern.test(lines[i])) {
+    if (pattern.test(lines[i].trim())) {
       for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
-        if (lines[j].trim()) return lines[j].trim();
+        const v = lines[j].trim();
+        if (v) return v;
       }
     }
   }
   return null;
 }
 
-function parseBulgarianID(text: string) {
-  const data: Record<string, string> = {};
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+function parseDate(s: string | null): string | null {
+  if (!s) return null;
+  const m = s.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  return null;
+}
 
-  // Names from Cyrillic labels
-  const surname = lineAfter(lines, /^Фамилия$/);
-  if (surname) data.last_name = toTitleCase(surname);
-
-  const firstName = lineAfter(lines, /^Име$/);
-  if (firstName) data.first_name = toTitleCase(firstName);
-
+function parseBulgarianId(text: string) {
+  const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+  const lastName   = lineAfter(lines, /^Фамилия$/);
+  const firstName  = lineAfter(lines, /^Име$/);
   const middleName = lineAfter(lines, /^Презиме$/);
-  if (middleName) data.middle_name = toTitleCase(middleName);
-
-  // EGN
-  const egnMatch = text.match(/\b(\d{10})\b/);
-  if (egnMatch) data.egn = egnMatch[1];
-
-  // Document number (9 digits, not part of EGN)
-  for (const m of text.matchAll(/\b(\d{9})\b/g)) {
-    if (!data.egn?.includes(m[1])) { data.id_card_number = m[1]; break; }
-  }
-
-  // Expiry date
-  const expiryIdx = lines.findIndex(l => /Валидност|Date of expiry/i.test(l));
-  if (expiryIdx >= 0) {
-    const expiryLine = lines[expiryIdx];
-    const inlineDate = expiryLine.match(/(\d{2})\.(\d{2})\.(\d{4})/);
-    if (inlineDate) {
-      data.id_card_expiry = `${inlineDate[3]}-${inlineDate[2]}-${inlineDate[1]}`;
-    } else {
-      for (let j = expiryIdx + 1; j < Math.min(expiryIdx + 4, lines.length); j++) {
-        const dm = lines[j].match(/(\d{2})\.(\d{2})\.(\d{4})/);
-        if (dm) { data.id_card_expiry = `${dm[3]}-${dm[2]}-${dm[1]}`; break; }
+  const egnMatch   = text.match(/\b(\d{10})\b/);
+  const idMatch    = text.match(/\b(\d{9})\b/);
+  const issuedBy   = lineAfter(lines, /^(Издадена?\s*от|Authority)$/i);
+  const issuedRaw  = lineAfter(lines, /^(Дата\s*на\s*издаване|Date of issue)$/i);
+  const expiryRaw  = lineAfter(lines, /^(Валидно\s*до|Expiry|Valid until)$/i);
+  let expiryMrz: string | null = null;
+  for (const line of lines) {
+    if (/^[A-Z0-9<]{30,44}$/.test(line)) {
+      const exp = line.substring(19, 25);
+      if (/^\d{6}$/.test(exp)) {
+        const yy = parseInt(exp.substring(0, 2));
+        const mm = exp.substring(2, 4);
+        const dd = exp.substring(4, 6);
+        const yyyy = yy > 30 ? `19${String(yy).padStart(2,'0')}` : `20${String(yy).padStart(2,'0')}`;
+        expiryMrz = `${yyyy}-${mm}-${dd}`;
       }
     }
   }
-
-  // Issue date — appears after "Дата на издаване", sometimes 2-3 lines later
-  const issueDateIdx = lines.findIndex(l => /Дата на издаване/.test(l));
-  if (issueDateIdx >= 0) {
-    for (let j = issueDateIdx + 1; j < Math.min(issueDateIdx + 6, lines.length); j++) {
-      const dm = lines[j].match(/(\d{2})\.(\d{2})\.(\d{4})/);
-      if (dm) { data.id_card_issued_date = `${dm[3]}-${dm[2]}-${dm[1]}`; break; }
-    }
-  }
-
-  // Issued by — "Издаден от thority МВР София/..."
-  const issuedIdx = lines.findIndex(l => /Издаден от/.test(l));
-  if (issuedIdx >= 0) {
-    const issuedLine = lines[issuedIdx];
-    const mvrInline = issuedLine.match(/(МВР[^/\n]*)/);
-    if (mvrInline) data.id_card_issued_by = mvrInline[1].trim();
-  }
-
-  // City — look for ГР.XXXX/XXXX pattern
-  const grMatch = text.match(/ГР\.([А-ЯЁ]+)\/[A-Z]+/i);
-  if (grMatch) data.city = toTitleCase(grMatch[1]);
-  else {
-    // fallback: XXXX/SOFIA pattern
-    const cityFallback = text.match(/([А-ЯЁ]{3,})\/(?:SOFIA|PLOVDIV|VARNA|BURGAS|[A-Z]{3,})/);
-    if (cityFallback) data.city = toTitleCase(cityFallback[1]);
-  }
-
-  // Address — line starting with ЖК, УЛ, БУЛ, ПЖ
-  const addrMatch = text.match(/(?:ЖК\.?|УЛ\.?|БУЛ\.?|жк\.?|ул\.?)\s*([^\n]{5,})/i);
-  if (addrMatch) data.address = addrMatch[0].trim();
-
-  return data;
+  const addressLine = lineAfter(lines, /^(Пос႐оянен\s*адрес|Перманентен\s*адрес|Адрес|Address)$/i);
+  const cityLine    = lineAfter(lines, /^(Населено\s*място|Град|City)$/i);
+  const muniLine    = lineAfter(lines, /^(Община|Municipality)$/i);
+  return {
+    last_name: lastName, first_name: firstName, middle_name: middleName,
+    egn: egnMatch?.[1] ?? null,
+    id_card_number: idMatch?.[1] ?? null,
+    id_card_issued_by: issuedBy,
+    id_card_issued_date: parseDate(issuedRaw),
+    id_card_expiry: parseDate(expiryRaw) || expiryMrz,
+    address: addressLine, city: cityLine, municipality: muniLine,
+  };
 }
 
-async function visionOCR(base64: string, apiKey: string): Promise<string> {
-  const content = base64.includes(',') ? base64.split(',')[1] : base64;
-  const res = await fetch(
-    `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        requests: [{ image: { content }, features: [{ type: 'TEXT_DETECTION', maxResults: 1 }] }],
-      }),
-    }
-  );
-  const d = await res.json();
-  if (d.error) throw new Error(d.error.message);
-  return d.responses?.[0]?.fullTextAnnotation?.text || '';
+async function ocrWithGoogleVision(base64: string): Promise<string> {
+  const apiKey = process.env.GOOGLE_VISION_API_KEY;
+  if (!apiKey) throw new Error('GOOGLE_VISION_API_KEY not set');
+  const res = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requests: [{ image: { content: base64 }, features: [{ type: 'DOCUMENT_TEXT_DETECTION' }] }] }),
+  });
+  if (!res.ok) throw new Error(`Vision API ${res.status}: ${await res.text()}`);
+  const json = await res.json();
+  return json.responses?.[0]?.fullTextAnnotation?.text || json.responses?.[0]?.textAnnotations?.[0]?.description || '';
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const apiKey = process.env.GOOGLE_VISION_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: 'GOOGLE_VISION_API_KEY не е настроен' }, { status: 500 });
-
     const body = await req.json();
-    const imageList: string[] = body.images ?? (body.image ? [body.image] : []);
-    if (!imageList.length) return NextResponse.json({ error: 'No image' }, { status: 400 });
-
-    const texts = await Promise.all(imageList.map(img => visionOCR(img, apiKey)));
-    const combinedText = texts.join('\n');
-
-    if (!combinedText.trim())
-      return NextResponse.json({ error: 'Не е разпознат текст. Опитайте с по-ясна снимка.' }, { status: 422 });
-
-    return NextResponse.json({ data: parseBulgarianID(combinedText) });
+    const images: string[] = body.images || (body.image ? [body.image] : []);
+    if (!images.length) return NextResponse.json({ error: 'No images' }, { status: 400 });
+    let combinedText = '';
+    for (const img of images) {
+      combinedText += await ocrWithGoogleVision(img.replace(/^data:image\/\w+;base64,/, '')) + '\n';
+    }
+    return NextResponse.json({ data: parseBulgarianId(combinedText), rawText: combinedText });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message || 'OCR грешка' }, { status: 500 });
+    return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
