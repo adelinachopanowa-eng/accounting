@@ -4,7 +4,9 @@ import crypto from 'crypto';
 export const runtime = 'nodejs';
 
 async function getAccessToken() {
-  const sa = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!);
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON не е настроен в Vercel');
+  const sa = JSON.parse(raw);
   const now = Math.floor(Date.now() / 1000);
   const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
   const payload = Buffer.from(JSON.stringify({
@@ -29,129 +31,107 @@ async function getAccessToken() {
     }),
   });
   const d = await res.json();
+  if (!d.access_token) throw new Error('Google auth грешка: ' + JSON.stringify(d));
   return d.access_token as string;
-}
-
-function parseBulgarianID(text: string) {
-  const data: Record<string, string> = {};
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-
-  // EGN - 10 consecutive digits
-  const egnMatch = text.match(/\b(\d{10})\b/);
-  if (egnMatch) data.egn = egnMatch[1];
-
-  // ID card number - 9 digits
-  const idMatches = [...text.matchAll(/\b(\d{9})\b/g)];
-  for (const m of idMatches) {
-    if (m[1] !== data.egn?.slice(0, 9)) {
-      data.id_card_number = m[1];
-      break;
-    }
-  }
-
-  // Try MRZ parsing (3 lines of ~30 chars with < characters)
-  const mrzLines = lines.filter(l => /^[A-Z0-9<]{15,}$/.test(l));
-  if (mrzLines.length >= 2) {
-    const nameLine = mrzLines[mrzLines.length - 1];
-    const parts = nameLine.replace(/</g, ' ').trim().split(/\s{2,}/);
-    if (parts.length >= 1) {
-      const nameParts = parts[0].trim().split(' ').filter(Boolean);
-      if (nameParts[0]) data.last_name = toTitleCase(nameParts[0]);
-    }
-    if (parts.length >= 2) {
-      const givenParts = parts[1].trim().split(' ').filter(Boolean);
-      if (givenParts[0]) data.first_name = toTitleCase(givenParts[0]);
-      if (givenParts[1]) data.middle_name = toTitleCase(givenParts[1]);
-    }
-
-    // Date line
-    const dateLine = mrzLines.find(l => /^\d{6}[0-9MF]/.test(l));
-    if (dateLine) {
-      const dob = dateLine.slice(0, 6);
-      const expiry = dateLine.slice(8, 14);
-      // dob: YYMMDD
-      const year = parseInt(dob.slice(0, 2));
-      const fullYear = year > 30 ? `19${dob.slice(0, 2)}` : `20${dob.slice(0, 2)}`;
-      // expiry: YYMMDD
-      const expYear = parseInt(expiry.slice(0, 2));
-      const fullExpYear = `20${expiry.slice(0, 2)}`;
-      data.id_card_expiry = `${fullExpYear}-${expiry.slice(2, 4)}-${expiry.slice(4, 6)}`;
-    }
-  }
-
-  // Cyrillic name patterns
-  if (!data.last_name) {
-    const cyrillicNames = lines.filter(l => /^[А-ЯЁ][а-яё]+$/.test(l) || /^[А-ЯЁ]{2,}$/.test(l));
-    if (cyrillicNames.length >= 3) {
-      data.last_name = toTitleCase(cyrillicNames[0]);
-      data.first_name = toTitleCase(cyrillicNames[1]);
-      data.middle_name = toTitleCase(cyrillicNames[2]);
-    } else if (cyrillicNames.length === 2) {
-      data.last_name = toTitleCase(cyrillicNames[0]);
-      data.first_name = toTitleCase(cyrillicNames[1]);
-    }
-  }
-
-  // Issued by
-  const issuedMatch = text.match(/(?:МВР|MVR|издаден от)[\s:]+([^\n]+)/i);
-  if (issuedMatch) data.id_card_issued_by = issuedMatch[1].trim();
-  else if (text.includes('МВР')) data.id_card_issued_by = 'МВР';
-
-  // Issued date - look for DD.MM.YYYY pattern
-  const dateMatches = [...text.matchAll(/(\d{2}\.\d{2}\.\d{4})/g)];
-  if (dateMatches.length >= 1) {
-    const [d, m, y] = dateMatches[0][1].split('.');
-    data.id_card_issued_date = `${y}-${m}-${d}`;
-  }
-  if (dateMatches.length >= 2 && !data.id_card_expiry) {
-    const [d, m, y] = dateMatches[1][1].split('.');
-    data.id_card_expiry = `${y}-${m}-${d}`;
-  }
-
-  // City / address
-  const addrMatch = text.match(/(?:адрес|address|гр\.|с\.)[\s.:]+([^\n]+)/i);
-  if (addrMatch) data.address = addrMatch[1].trim();
-
-  const cityMatch = text.match(/(?:гр\.|град|с\.|село)\s*([А-ЯЁа-яё]+)/i);
-  if (cityMatch) data.city = toTitleCase(cityMatch[1]);
-
-  return data;
 }
 
 function toTitleCase(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
 
+function parseBulgarianID(text: string) {
+  const data: Record<string, string> = {};
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+  const egnMatch = text.match(/\b(\d{10})\b/);
+  if (egnMatch) data.egn = egnMatch[1];
+
+  const idMatches = [...text.matchAll(/\b(\d{9})\b/g)];
+  for (const m of idMatches) {
+    if (m[1] !== data.egn?.slice(0, 9)) { data.id_card_number = m[1]; break; }
+  }
+
+  // MRZ lines (contain only uppercase + digits + <)
+  const mrzLines = lines.filter(l => l.length >= 20 && /^[A-Z0-9<]+$/.test(l));
+  if (mrzLines.length >= 1) {
+    const nameLine = mrzLines[mrzLines.length - 1];
+    const parts = nameLine.replace(/</g, ' ').trim().split(/\s{2,}/);
+    if (parts[0]) {
+      const lastParts = parts[0].trim().split(' ').filter(Boolean);
+      if (lastParts[0]) data.last_name = toTitleCase(lastParts[0]);
+    }
+    if (parts[1]) {
+      const givenParts = parts[1].trim().split(' ').filter(Boolean);
+      if (givenParts[0]) data.first_name = toTitleCase(givenParts[0]);
+      if (givenParts[1]) data.middle_name = toTitleCase(givenParts[1]);
+    }
+    const dateLine = mrzLines.find(l => /^\d{6}[0-9MF<]/.test(l));
+    if (dateLine && dateLine.length >= 14) {
+      const expiry = dateLine.slice(8, 14);
+      const expY = parseInt(expiry.slice(0, 2));
+      const fullExpY = expY < 50 ? `20${expiry.slice(0,2)}` : `19${expiry.slice(0,2)}`;
+      data.id_card_expiry = `${fullExpY}-${expiry.slice(2,4)}-${expiry.slice(4,6)}`;
+    }
+  }
+
+  // Cyrillic names if MRZ didn't catch them
+  if (!data.last_name) {
+    const cyrNames = lines.filter(l => /^[А-ЯЁ][А-ЯЁа-яё\-]+$/.test(l) && l.length > 2);
+    if (cyrNames[0]) data.last_name = toTitleCase(cyrNames[0]);
+    if (cyrNames[1]) data.first_name = toTitleCase(cyrNames[1]);
+    if (cyrNames[2]) data.middle_name = toTitleCase(cyrNames[2]);
+  }
+
+  // Dates DD.MM.YYYY
+  const dateMatches = [...text.matchAll(/(\d{2})\.(\d{2})\.(\d{4})/g)];
+  if (dateMatches[0]) data.id_card_issued_date = `${dateMatches[0][3]}-${dateMatches[0][2]}-${dateMatches[0][1]}`;
+  if (dateMatches[1] && !data.id_card_expiry) data.id_card_expiry = `${dateMatches[1][3]}-${dateMatches[1][2]}-${dateMatches[1][1]}`;
+
+  // Issued by MVR
+  if (text.match(/МВР|MVR/)) data.id_card_issued_by = 'МВР';
+  const issuedMatch = text.match(/(?:МВР|MVR)[\s\-]+([^\.\n]+)/);
+  if (issuedMatch) data.id_card_issued_by = 'MVR ' + issuedMatch[1].trim();
+
+  // City
+  const cityMatch = text.match(/(?:гр\.?|ГР\.?)\s*([А-ЯЁ][а-яёА-ЯЁ]+)/);
+  if (cityMatch) data.city = toTitleCase(cityMatch[1]);
+
+  // Address
+  const addrMatch = text.match(/(?:ул\.?|бул\.?|жк\.?|пж[\s.])[\s]*([^\.\n]{5,})/);
+  if (addrMatch) data.address = addrMatch[1].trim();
+
+  return data;
+}
+
+async function ocrImage(base64: string, token: string): Promise<string> {
+  const content = base64.includes(',') ? base64.split(',')[1] : base64;
+  const res = await fetch('https://vision.googleapis.com/v1/images:annotate', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      requests: [{ image: { content }, features: [{ type: 'TEXT_DETECTION', maxResults: 1 }] }],
+    }),
+  });
+  const d = await res.json();
+  if (d.error) throw new Error(d.error.message);
+  return d.responses?.[0]?.fullTextAnnotation?.text || '';
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { image } = await req.json();
-    if (!image) return NextResponse.json({ error: 'No image' }, { status: 400 });
-
-    const base64 = image.includes(',') ? image.split(',')[1] : image;
+    const body = await req.json();
+    // Support both single image (legacy) and multiple images
+    const imageList: string[] = body.images ?? (body.image ? [body.image] : []);
+    if (!imageList.length) return NextResponse.json({ error: 'No image' }, { status: 400 });
 
     const token = await getAccessToken();
-    const visionRes = await fetch(
-      'https://vision.googleapis.com/v1/images:annotate',
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requests: [{
-            image: { content: base64 },
-            features: [{ type: 'TEXT_DETECTION', maxResults: 1 }],
-          }],
-        }),
-      }
-    );
+    const texts = await Promise.all(imageList.map(img => ocrImage(img, token)));
+    const combinedText = texts.join('\n');
 
-    const visionData = await visionRes.json();
-    if (visionData.error) throw new Error(visionData.error.message);
+    if (!combinedText.trim())
+      return NextResponse.json({ error: 'Не е разпознат текст. Опитайте с по-ясна снимка.' }, { status: 422 });
 
-    const text = visionData.responses?.[0]?.fullTextAnnotation?.text || '';
-    if (!text) return NextResponse.json({ error: 'Не е разпознат текст. Опитайте с по-ясна снимка.' }, { status: 422 });
-
-    const parsed = parseBulgarianID(text);
-    return NextResponse.json({ data: parsed });
+    return NextResponse.json({ data: parseBulgarianID(combinedText) });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'OCR грешка' }, { status: 500 });
   }
