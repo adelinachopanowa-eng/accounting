@@ -4,10 +4,9 @@ import { numberToBulgarianWords } from '@/lib/utils';
 import { format } from 'date-fns';
 
 const styles = StyleSheet.create({
-  page: { padding: 20, fontSize: 8, fontFamily: 'Roboto' },
+  page: { padding: 20, fontSize: 8, fontFamily: 'NotoSans' },
   section: { marginBottom: 8, borderWidth: 1, borderColor: '#000', padding: 6 },
   title: { fontSize: 11, fontWeight: 'bold', textAlign: 'center', marginBottom: 4 },
-  subtitle: { fontSize: 9, fontWeight: 'bold', marginBottom: 3 },
   row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
   table: { borderWidth: 1, borderColor: '#000', marginTop: 4 },
   tr: { flexDirection: 'row', borderBottomWidth: 1, borderColor: '#000' },
@@ -30,7 +29,6 @@ export default function TransactionPDF({ transaction }: { transaction: any }) {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* ПИС */}
         <View style={styles.section}>
           <Text style={styles.title}>ПОКУПКО-ИЗПЛАЩАТЕЛНА СМЕТКА (ПИС) № {transaction.receipt_number}</Text>
           <View style={styles.row}>
@@ -77,7 +75,6 @@ export default function TransactionPDF({ transaction }: { transaction: any }) {
           </View>
         </View>
 
-        {/* Декларация */}
         <View style={styles.section}>
           <Text style={styles.title}>ДЕКЛАРАЦИЯ ЗА ПРОИЗХОД НА ОТПАДЪЦИ</Text>
           <Text style={styles.small}>
@@ -91,7 +88,6 @@ export default function TransactionPDF({ transaction }: { transaction: any }) {
           </View>
         </View>
 
-        {/* Договор */}
         <View style={styles.section}>
           <Text style={styles.title}>ДОГОВОР № {transaction.contract_number || transaction.receipt_number}</Text>
           <Text style={styles.small}>
