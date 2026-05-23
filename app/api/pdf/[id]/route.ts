@@ -208,7 +208,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
   try {
     const buf = await buildPdf(tx, reg, bold);
-    return new Response(buf, {
+    return new Response(new Uint8Array(buf), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="PIS-${tx.receipt_number}.pdf"`,
