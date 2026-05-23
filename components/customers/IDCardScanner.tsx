@@ -16,8 +16,7 @@ async function compressImage(file: File): Promise<string> {
         else { width = Math.round(width * MAX / height); height = MAX; }
       }
       const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = width; canvas.height = height;
       canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
       resolve(canvas.toDataURL('image/jpeg', 0.85));
     };
@@ -30,12 +29,12 @@ export default function IDCardScanner({ onExtracted }: { onExtracted: (data: Par
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [previews, setPreviews] = useState<string[]>([]);
+  const [rawText, setRawText] = useState('');
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
   const handleFiles = async (files: FileList) => {
-    setLoading(true);
-    setError('');
+    setLoading(true); setError(''); setRawText('');
     try {
       const images = await Promise.all(Array.from(files).map(f => compressImage(f)));
       setPreviews(prev => [...prev, ...images]);
@@ -46,6 +45,7 @@ export default function IDCardScanner({ onExtracted }: { onExtracted: (data: Par
       });
       const d = await resp.json();
       if (d.error) throw new Error(d.error);
+      if (d.rawText) setRawText(d.rawText);
       onExtracted(d.data);
     } catch (e: any) {
       setError(e.message || 'Грешка при разпознаване');
@@ -78,12 +78,16 @@ export default function IDCardScanner({ onExtracted }: { onExtracted: (data: Par
           {previews.map((src, i) => (
             <div key={i} className="relative">
               <img src={src} alt="" className="h-20 w-auto rounded border object-cover" />
-              <button type="button" onClick={() => removePreview(i)}
-                className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5">
-                <X size={10} />
-              </button>
+              <button type="button" onClick={() => removePreview(i)} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"><X size={10} /></button>
             </div>
           ))}
+        </div>
+      )}
+
+      {rawText && (
+        <div className="bg-slate-100 rounded p-2">
+          <p className="text-xs font-semibold text-slate-600 mb-1">Разпознат текст (изпрати на Claude):</p>
+          <pre className="text-xs text-slate-700 whitespace-pre-wrap break-all select-all">{rawText}</pre>
         </div>
       )}
 
