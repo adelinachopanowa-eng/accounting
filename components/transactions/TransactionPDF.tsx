@@ -1,10 +1,10 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import { numberToBulgarianWords } from '@/lib/utils';
 import { format } from 'date-fns';
 
 const styles = StyleSheet.create({
-  page: { padding: 20, fontSize: 8, fontFamily: 'Helvetica' },
+  page: { padding: 20, fontSize: 8, fontFamily: 'Roboto' },
   section: { marginBottom: 8, borderWidth: 1, borderColor: '#000', padding: 6 },
   title: { fontSize: 11, fontWeight: 'bold', textAlign: 'center', marginBottom: 4 },
   subtitle: { fontSize: 9, fontWeight: 'bold', marginBottom: 3 },
@@ -30,15 +30,15 @@ export default function TransactionPDF({ transaction }: { transaction: any }) {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* Section 1: ПИС */}
+        {/* ПИС */}
         <View style={styles.section}>
           <Text style={styles.title}>ПОКУПКО-ИЗПЛАЩАТЕЛНА СМЕТКА (ПИС) № {transaction.receipt_number}</Text>
           <View style={styles.row}>
-            <Text>Прогрестрейд ЕООД, гр. София, ул. професор Иван Георгов №1</Text>
+            <Text>Прогрестрейд ЕООД, гр. София, ул. проф. Иван Георгов №1</Text>
             <Text>Дата: {date}</Text>
           </View>
           <View style={styles.row}>
-            <Text>ИН: 130975863 / ДДС №: BG130975863</Text>
+            <Text>ЕИК: 130975863 / ДДС №: BG130975863</Text>
             <Text>Оператор: {transaction.operator_name || ''}</Text>
           </View>
           <Text style={{ marginTop: 4 }}>Доставчик: {fullName}, ЕГН: {c.egn}</Text>
@@ -51,7 +51,7 @@ export default function TransactionPDF({ transaction }: { transaction: any }) {
               <Text style={[styles.th, styles.c2]}>Наименование</Text>
               <Text style={[styles.th, styles.c3]}>Мярка</Text>
               <Text style={[styles.th, styles.c4]}>Количество</Text>
-              <Text style={[styles.th, styles.c5]}>Един. цена</Text>
+              <Text style={[styles.th, styles.c5]}>Ед. цена</Text>
               <Text style={[styles.th, styles.c6, { borderRightWidth: 0 }]}>Обща стойност</Text>
             </View>
             {items.map((it: any, i: number) => (
@@ -77,12 +77,12 @@ export default function TransactionPDF({ transaction }: { transaction: any }) {
           </View>
         </View>
 
-        {/* Section 2: Декларация за произход */}
+        {/* Декларация */}
         <View style={styles.section}>
           <Text style={styles.title}>ДЕКЛАРАЦИЯ ЗА ПРОИЗХОД НА ОТПАДЪЦИ</Text>
           <Text style={styles.small}>
-            Долуподписаният(ата) {fullName}, ЕГН {c.egn}, притежател на ЛК № {c.id_card_number}, издадена от {c.id_card_issued_by} на {c.id_card_issued_date}, с адрес {c.address}, гр. {c.city}, общ. {c.municipality},
-            декларирам, че описаните в ПИС № {transaction.receipt_number} от {date} отпадъци са моя собственост, произхождат от законен източник, не са придобити чрез престъпление, не са общинска или държавна собственост, не са част от електрически, електронен или друг уред,
+            Долуподписаният(ата) {fullName}, ЕГН {c.egn}, притежател на ЛК № {c.id_card_number}, издадена от {c.id_card_issued_by} на {c.id_card_issued_date}, с адрес {c.address}, гр. {c.city}, общ. {c.municipality},{' '}
+            декларирам, че описаните в ПИС № {transaction.receipt_number} от {date} отпадъци са моя собственост, произхождат от законен източник, не са придобити чрез престъпление, не са общинска или държавна собственост, не са част от електрически, електронен или друг уред,{' '}
             който подлежи на връщане по реда на ЗУО. Известно ми е, че за деклариране на неверни данни нося наказателна отговорност по чл. 313 от НК.
           </Text>
           <View style={styles.sigRow}>
@@ -91,18 +91,18 @@ export default function TransactionPDF({ transaction }: { transaction: any }) {
           </View>
         </View>
 
-        {/* Section 3: Договор */}
+        {/* Договор */}
         <View style={styles.section}>
           <Text style={styles.title}>ДОГОВОР № {transaction.contract_number || transaction.receipt_number}</Text>
           <Text style={styles.small}>
-            Днес, {date} г., в гр. София, между "Прогрестрейд" ЕООД, ЕИК 130975863, със седалище и адрес на управление: гр. София, ул. професор Иван Георгов №1, наричано по-долу КУПУВАЧ,
-            от една страна, и {fullName}, ЕГН {c.egn}, ЛК № {c.id_card_number}, адрес {c.address}, гр. {c.city}, наричан по-долу ПРОДАВАЧ, от друга страна, се сключи настоящият договор за следното:
+            Днес, {date} г., в гр. София, между "Прогрестрейд" ЕООД, ЕИК 130975863, със седалище и адрес на управление: гр. София, ул. проф. Иван Георгов №1, наричано по-долу КУПУВАЧ,{' '}
+            от една страна, и {fullName}, ЕГН {c.egn}, ЛК № {c.id_card_number}, адрес {c.address}, гр. {c.city}, наричан по-долу ПРОДАВАЧ, от друга страна, се сключи настоящият договор.
           </Text>
           <Text style={styles.small}>
-            Чл. 1. ПРОДАВАЧЪТ продава, а КУПУВАЧЪТ купува отпадъците, описани в ПИС № {transaction.receipt_number} от {date}, на обща стойност {total.toFixed(2)} лв. ({totalWords}).
-            {'\n'}Чл. 2. Плащането се извършва {transaction.payment_method === 'cash' ? 'в брой при подписване на договора' : `по банков път на IBAN ${transaction.bank_account}, банка ${transaction.bank_name}, BIC ${transaction.bank_bic}`}.
-            {'\n'}Чл. 3. ПРОДАВАЧЪТ декларира законен произход на отпадъците и носи отговорност за верността на данните.
-            {'\n'}Чл. 4. Договорът се състави в два еднообразни екземпляра - по един за всяка страна.
+            Чл. 1. ПРОДАВАЧЪТ продава, а КУПУВАЧЪТ купува отпадъците, описани в ПИС № {transaction.receipt_number} от {date}, на обща стойност {total.toFixed(2)} лв. ({totalWords}).{'\n'}
+            Чл. 2. Плащането се извършва {transaction.payment_method === 'cash' ? 'в брой при подписване на договора' : `по банков път на IBAN ${transaction.bank_account}, банка ${transaction.bank_name}, BIC ${transaction.bank_bic}`}.{'\n'}
+            Чл. 3. ПРОДАВАЧЪТ декларира законен произход на отпадъците и носи отговорност за верността на данните.{'\n'}
+            Чл. 4. Договорът се състави в два еднообразни екземпляра - по един за всяка страна.
           </Text>
           <View style={styles.sigRow}>
             <Text style={styles.sigBox}>ПРОДАВАЧ: ________________</Text>
