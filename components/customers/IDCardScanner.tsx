@@ -3,6 +3,29 @@ import { useState, useRef } from 'react';
 import { Camera, ImageIcon, Loader2, X } from 'lucide-react';
 import type { Customer } from '@/types';
 
+async function compressImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 1200;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+        else { width = Math.round(width * MAX / height); height = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
 export default function IDCardScanner({ onExtracted }: { onExtracted: (data: Partial<Customer>) => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -14,16 +37,7 @@ export default function IDCardScanner({ onExtracted }: { onExtracted: (data: Par
     setLoading(true);
     setError('');
     try {
-      const images: string[] = await Promise.all(
-        Array.from(files).map(
-          file => new Promise<string>((res, rej) => {
-            const r = new FileReader();
-            r.onload = () => res(r.result as string);
-            r.onerror = rej;
-            r.readAsDataURL(file);
-          })
-        )
-      );
+      const images = await Promise.all(Array.from(files).map(f => compressImage(f)));
       setPreviews(prev => [...prev, ...images]);
       const resp = await fetch('/api/ocr', {
         method: 'POST',
@@ -73,9 +87,7 @@ export default function IDCardScanner({ onExtracted }: { onExtracted: (data: Par
         </div>
       )}
 
-      <p className="text-xs text-slate-500 text-center">
-        Можете да изберете няколко снимки (предна и задна страна на ЛК)
-      </p>
+      <p className="text-xs text-slate-500 text-center">Можете да изберете няколко снимки (предна и задна страна на ЛК)</p>
       {error && <p className="text-red-600 text-sm text-center">{error}</p>}
     </div>
   );
