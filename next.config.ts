@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
+  experimental: {
+    outputFileTracingIncludes: {
+      '/api/pdf/[id]': ['./public/fonts/**'],
+    },
+  },
 };
 
 export default nextConfig;
