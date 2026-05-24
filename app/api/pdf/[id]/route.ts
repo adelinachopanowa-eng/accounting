@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase-server';
-import { numberToBulgarianWords } from '@/lib/utils';
+import { numberToBulgarianWords, intToBulgarianWords, eurToBgn } from '@/lib/utils';
 import { format } from 'date-fns';
 import {
   Document, Packer, Paragraph, Table, TableRow, TableCell,
@@ -23,7 +23,7 @@ function R(text: string, size = 16, bold = false): TextRun {
 function B(text: string, size = 18): TextRun {
   return R(text, size, true);
 }
-function p(runs: TextRun[], align = AlignmentType.LEFT, after = 60): Paragraph {
+function p(runs: TextRun[], align: any = AlignmentType.LEFT, after = 60): Paragraph {
   return new Paragraph({ children: runs, alignment: align, spacing: { after } });
 }
 function empty(): Paragraph {
@@ -46,9 +46,10 @@ function sigLine(left: string, right: string): Table {
 function buildDoc(tx: any): Document {
   const cu    = tx.customers || {};
   const items = (tx.transaction_items || []) as any[];
-  const total = Number(tx.total_amount || 0);
+  const totalEur = Number(tx.total_amount || 0);
+  const totalBgn = eurToBgn(totalEur);
   const date  = format(new Date(tx.transaction_date), 'dd.MM.yyyy');
-  const words = numberToBulgarianWords(total);
+  const words = numberToBulgarianWords(totalEur);
   const name  = [cu.first_name, cu.middle_name, cu.last_name].filter(Boolean).join(' ');
 
   const COL_W = [500, 4900, 900, 1400, 1500, 1500];
@@ -86,14 +87,9 @@ function buildDoc(tx: any): Document {
     })
   );
 
-  const twoCol = (left: string, right: string) => new Table({
+  const itemsTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
-    layout: TableLayoutType.FIXED,
-    borders: NO_BORDERS,
-    rows: [new TableRow({ children: [
-      new TableCell({ borders: NO_BORDERS, width: { size: 60, type: WidthType.PERCENTAGE }, children: [p([R(left)], AlignmentType.LEFT, 0)] }),
-      new TableCell({ borders: NO_BORDERS, width: { size: 40, type: WidthType.PERCENTAGE }, children: [p([B(right)], AlignmentType.RIGHT, 0)] }),
-    ]})],
+    rows: [headerRow, ...itemRows],
   });
 
   const headerBox = (leftText: string, leftSize: number, rightText: string) => new Table({
@@ -106,55 +102,77 @@ function buildDoc(tx: any): Document {
     ]})],
   });
 
+  // Сума + лева еквивалент (2 реда)
+  const totalsBlock = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    layout: TableLayoutType.FIXED,
+    borders: NO_BORDERS,
+    rows: [
+      new TableRow({ children: [
+        new TableCell({ borders: NO_BORDERS, width: { size: 60, type: WidthType.PERCENTAGE }, children: [p([R(`Словом общо: ${words}`)], AlignmentType.LEFT, 0)] }),
+        new TableCell({ borders: NO_BORDERS, width: { size: 40, type: WidthType.PERCENTAGE }, children: [p([B(`Сума за плащане:  ${totalEur.toFixed(2)}`)], AlignmentType.RIGHT, 0)] }),
+      ]}),
+      new TableRow({ children: [
+        new TableCell({ borders: NO_BORDERS, width: { size: 60, type: WidthType.PERCENTAGE }, children: [p([R('')], AlignmentType.LEFT, 0)] }),
+        new TableCell({ borders: NO_BORDERS, width: { size: 40, type: WidthType.PERCENTAGE }, children: [p([R(`${totalBgn.toFixed(2)} лв.`)], AlignmentType.RIGHT, 0)] }),
+      ]}),
+    ],
+  });
+
   return new Document({
     sections: [{
       properties: { page: { margin: { top: 700, bottom: 700, left: 800, right: 800 } } },
       children: [
-        // Header
+        // Хедър
         new Table({
           width: { size: 100, type: WidthType.PERCENTAGE },
           layout: TableLayoutType.FIXED,
           borders: NO_BORDERS,
           rows: [new TableRow({ children: [
             new TableCell({ borders: NO_BORDERS, width: { size: 80, type: WidthType.PERCENTAGE }, children: [
-              p([B('Прогрестрейд ЕООд', 16)], AlignmentType.LEFT, 0),
-              p([R('София, ул. Професор Иван Георгов №1  |  ИН по ЗДДС: BG130975863  |  ИН: 130975863', 14)], AlignmentType.LEFT, 0),
+              p([B('Прогрестрейд ЕООД', 16)], AlignmentType.LEFT, 0),
+              p([R('София, ул. професор Иван Георгов №1  |  ИН по ЗДДС: BG130975863  |  ИН: 130975863', 14)], AlignmentType.LEFT, 0),
             ]}),
-            new TableCell({ borders: NO_BORDERS, width: { size: 20, type: WidthType.PERCENTAGE }, children: [p([B('Склад стоки', 16)], AlignmentType.RIGHT, 0)] }),
+            new TableCell({ borders: NO_BORDERS, width: { size: 20, type: WidthType.PERCENTAGE }, children: [p([B('304 Склад стоки', 14)], AlignmentType.RIGHT, 0)] }),
           ]})],
         }),
         empty(),
 
-        // ── ПИС
+        // ПИС
         headerBox('Покупко - изплащателна сметка', 20, 'No и Дата на разрешението: 12-ДО-00001270-00/05.06.2013 г.'),
         p([B(`No:  ${tx.receipt_number}`, 18), R(`          Дата:  ${date} г.`)], AlignmentType.LEFT, 40),
         p([R(`Подписаният  ${name}  ЕГН ${cu.egn || ''}  град (с) ${cu.city || ''}  община ${cu.municipality || ''}`)], AlignmentType.LEFT, 40),
         p([R(`удостоверявам, че предадох:  адрес ${cu.address || ''}`)], AlignmentType.LEFT, 60),
-        new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [headerRow, ...itemRows] }),
+        itemsTable,
         empty(),
-        twoCol(`Словом общо: ${words}`, `Сума за плащане:  ${total.toFixed(2)} лв.`),
+        totalsBlock,
         empty(),
         sigLine(`Изплатил: ${tx.operator_name || ''}`, 'Получих сумата: (подпис на лицето, предало отпадъка)'),
         empty(),
 
-        // ── Декларация
+        // Декларация
         headerBox('Декларация за произход на отпадъци от черни и цветни метали', 18, 'Образец № 1 към чл. 39, ал. 4 от ЗУО'),
         p([R(`Долуподписаният/ата  ${name}  ЕГН ${cu.egn || ''}  град (с) ${cu.city || ''}  община ${cu.municipality || ''}  адрес ${cu.address || ''}`)], AlignmentType.LEFT, 40),
         p([R('декларирам, че продавам собствени отпадъци от черни и цветни метали с битов характер, представляващи:')], AlignmentType.LEFT, 40),
-        ...items.map((it, i) => p([R(`${i + 1}  ${it.nomenclatures?.name || ''}  ${Number(it.quantity).toFixed(3)}  ${numberToBulgarianWords(Number(it.quantity))} ${it.nomenclatures?.unit || 'kg'} и 00 gr`)], AlignmentType.LEFT, 40)),
+        ...items.map((it, i) => {
+          const q = Number(it.quantity);
+          const qKg = Math.floor(q);
+          const qGr = Math.round((q - qKg) * 1000);
+          return p([R(`${i + 1}  ${it.nomenclatures?.name || ''}  ${q.toFixed(3)}  ${intToBulgarianWords(qKg)} ${it.nomenclatures?.unit || 'kg'} и ${String(qGr).padStart(2, '0')} gr`)], AlignmentType.LEFT, 40);
+        }),
         p([R('Известна ми е наказателната отговорност, по чл. 313 от Наказателния кодекс за деклариране на неверни данни.')], AlignmentType.LEFT, 40),
         p([R(`Декларирам, че с настоящата сума получена в брой по ПИС №${tx.receipt_number}, не надвишавам сумата от 613.55 EUR, получени от предаване на ОЧЦМ във връзка с чл.38 ал.5 от ЗУО.`)], AlignmentType.LEFT, 60),
         sigLine(`Дата: ${date}  гр./с.: ${cu.city || 'София'}`, `Декларатор: ${name}`),
         empty(),
 
-        // ── Договор
+        // Договор
         p([B(`Договор №${tx.contract_number || tx.receipt_number} / ${date} г.`, 18)], AlignmentType.CENTER, 60),
         p([R(`Днес, ${date} г. в ${cu.city || 'София'}, се сключи този договор за продажба между:`)], AlignmentType.LEFT, 40),
-        p([R(`Прогрестрейд ЕООД със седалище и адрес на управление София, ул. професор Иван Георгов №1, ИН: 130975863, представлявано от ${tx.operator_name || ''}, наричан по-долу Купувач и`)], AlignmentType.LEFT, 40),
-        p([R(`${name} с адрес ${cu.address || ''}, ЕГН: ${cu.egn || ''}, л. к. ${cu.id_card_number || ''}, издадена от ${cu.id_card_issued_by || ''}, на ${cu.id_card_issued_date || ''}, наричан по-долу Продавач`)], AlignmentType.LEFT, 60),
-        p([B('Предмет на договора.'), R(` Страните се споразумяха за следното: Продавача прехвърля на Купувача правото на собственост и му предава стоката, описана в ПИС №${tx.receipt_number} / ${date}, срещу задължението на Купувача да му заплати уговорената цена.`)], AlignmentType.LEFT, 40),
+        p([R(`1. Прогрестрейд ЕООД със седалище и адрес на управление София, ул. професор Иван Георгов №1, ИН: 130975863, представлявано от ${tx.operator_name || ''}, наричан по-долу Купувач и`)], AlignmentType.LEFT, 40),
+        p([R(`2. ${name} с адрес ${cu.address || ''}, ЕГН: ${cu.egn || ''}, л. к. ${cu.id_card_number || ''}, издадена от ${cu.id_card_issued_by || ''}, на ${cu.id_card_issued_date || ''}, наричан по-долу Продавач`)], AlignmentType.LEFT, 60),
+        p([B('1. Предмет на договора.'), R(' Страните се споразумяха за следното: Продавача прехвърля на Купувача правото на собственост и му предава стоката, описана по-горе в ПИС №${tx.receipt_number} / ${date}, която е неразделна част от този договор, срещу задължението на Купувача да му заплати уговорената цена.`)], AlignmentType.LEFT, 40),
         ...(tx.payment_method !== 'cash' ? [p([R(`Плащането ще се извърши по сметка: ${tx.bank_account || ''}  ${tx.bank_name || ''}  ${tx.bank_bic || ''}`)], AlignmentType.LEFT, 40)] : []),
-        p([B('Общи положения.'), R(' Купувачът има право на обезщетение в размер на платената от него цена по този договор, ако бъде лишен от държането или бъде съдебно отстранен от закупените стоки поради това, че трети лица имат претенции за собствеността върху тях или неистинност на гореподписаната декларация.')], AlignmentType.LEFT, 40),
+        p([B('2. Общи положения.'), R(' Купувачът има право на обезщетение в размер на платената от него цена по този договор, ако бъде лишен от държането или бъде съдебно отстранен от закупените стоки поради това, че трети лица имат претенции за собствеността върху тях или неистинност на гореподписаната декларация.')], AlignmentType.LEFT, 40),
         p([R('Този договор се състави и подписа в два еднакви екземпляра, по един за всяка от страните.')], AlignmentType.LEFT, 60),
         sigLine(`Купувач: ${tx.operator_name || ''}`, `Продавач: ${name}`),
       ],
