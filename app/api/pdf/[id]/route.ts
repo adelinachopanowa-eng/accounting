@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase-server';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
-import path from 'path';
+import { NOTO_REGULAR, NOTO_BOLD } from '@/lib/fonts-data';
 import { numberToBulgarianWords } from '@/lib/utils';
 import { format } from 'date-fns';
 
@@ -9,40 +8,14 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-const CDN_REG  = 'https://cdn.jsdelivr.net/gh/googlefonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Regular.ttf';
-const CDN_BOLD = 'https://cdn.jsdelivr.net/gh/googlefonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Bold.ttf';
-let cReg: Buffer | null = null, cBold: Buffer | null = null;
-
-async function loadFont(name: string, url: string): Promise<Buffer> {
-  const t = `/tmp/${name}`, p = path.join(process.cwd(), 'public', 'fonts', name);
-  if (existsSync(t)) return readFileSync(t);
-  if (existsSync(p)) { const b = readFileSync(p); try { writeFileSync(t, b); } catch {} return b; }
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`Font CDN ${r.status}`);
-  const b = Buffer.from(await r.arrayBuffer());
-  if (b.length < 50000) throw new Error(`Font too small (${b.length} bytes)`);
-  try { writeFileSync(t, b); } catch {}
-  return b;
-}
-
-async function getFonts(): Promise<[Buffer, Buffer]> {
-  if (!cReg || !cBold) {
-    [cReg, cBold] = await Promise.all([
-      loadFont('NotoSans-Regular.ttf', CDN_REG),
-      loadFont('NotoSans-Bold.ttf',    CDN_BOLD),
-    ]);
-  }
-  return [cReg!, cBold!];
-}
-
-function buildPdf(tx: any, regBuf: Buffer, boldBuf: Buffer): Promise<Buffer> {
+function buildPdf(tx: any): Promise<Buffer> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const PDFDocument = require('pdfkit');
   return new Promise((resolve, reject) => {
     const M = 28, PW = 595.28, PH = 841.89, CW = PW - 2 * M, PAD = 4;
     const doc = new PDFDocument({ size: 'A4', autoFirstPage: true, bufferPages: true, margin: 0 });
-    doc.registerFont('R', regBuf);
-    doc.registerFont('B', boldBuf);
+    doc.registerFont('R', NOTO_REGULAR);
+    doc.registerFont('B', NOTO_BOLD);
 
     const chunks: Buffer[] = [];
     doc.on('data',  (c: Buffer) => chunks.push(c));
@@ -61,11 +34,9 @@ function buildPdf(tx: any, regBuf: Buffer, boldBuf: Buffer): Promise<Buffer> {
     function txt(s: string, x: number, yy: number, opts: Record<string,unknown> = {}) {
       doc.text(s, x, yy, opts);
     }
-
     function line(x1: number, y1: number, x2: number, y2: number, w = 0.4) {
       doc.strokeColor('#000').lineWidth(w).moveTo(x1, y1).lineTo(x2, y2).stroke();
     }
-
     function section(drawFn: () => void) {
       const sy = y;
       y += PAD;
@@ -74,23 +45,20 @@ function buildPdf(tx: any, regBuf: Buffer, boldBuf: Buffer): Promise<Buffer> {
       doc.strokeColor('#000').lineWidth(0.5).rect(M, sy, CW, y - sy).stroke();
       y += 5;
     }
-
-    function textLine(s: string, size = 7, bold = false, align: 'left'|'center'|'right' = 'left') {
+    function textLine(s: string, size = 7, bold = false) {
       doc.font(bold ? 'B' : 'R').fontSize(size);
       const h = doc.heightOfString(s, { width: CW - 2*PAD });
-      txt(s, M + PAD, y, { width: CW - 2*PAD, align });
+      txt(s, M + PAD, y, { width: CW - 2*PAD });
       y += h + 1.5;
     }
-
     function twoColLine(left: string, right: string, size = 7) {
       doc.font('R').fontSize(size);
       const lw = (CW - 2*PAD) * 0.60;
       const rw = (CW - 2*PAD) * 0.40;
-      txt(left,  M + PAD,       y, { width: lw });
-      txt(right, M + PAD + lw,  y, { width: rw, align: 'right' });
+      txt(left,  M + PAD,      y, { width: lw });
+      txt(right, M + PAD + lw, y, { width: rw, align: 'right' });
       y += 11;
     }
-
     function sigRow(left: string, right: string) {
       y += 6;
       const hw = (CW - 2*PAD) / 2 - 15;
@@ -103,7 +71,6 @@ function buildPdf(tx: any, regBuf: Buffer, boldBuf: Buffer): Promise<Buffer> {
       txt(right, rx, y, { width: hw, align: 'center' });
       y += 12;
     }
-
     function table(rows: string[][], colFracs: number[], rowH = 11) {
       const tw = CW - 2*PAD, tx0 = M + PAD;
       const colW = colFracs.map(f => tw * f);
@@ -128,7 +95,7 @@ function buildPdf(tx: any, regBuf: Buffer, boldBuf: Buffer): Promise<Buffer> {
       colW.slice(0,-1).forEach(cw => { cx += cw; line(cx, sy, cx, sy+th, 0.3); });
     }
 
-    // ── Хедър ──────────────────────────────────────────────────────
+    // Header
     doc.font('R').fontSize(7);
     txt('Прогрестрейд ЕООД', M, 14);
     txt('София, ул. Професор Иван Георгов №1', M + 110, 14);
@@ -138,30 +105,26 @@ function buildPdf(tx: any, regBuf: Buffer, boldBuf: Buffer): Promise<Buffer> {
     line(M, 23, PW - M, 23, 0.5);
     y = 29;
 
-    // ── ПИС ────────────────────────────────────────────────────────
+    // ПИС
     section(() => {
-      // заглавие + номер на разрешение
       doc.font('B').fontSize(9);
       txt('Покупко - изплащателна сметка', M + PAD, y, { width: CW * 0.6 });
       doc.font('R').fontSize(6.5);
       txt('No и Дата на разрешението: 12-ДО-00001270-00/05.06.2013 г.', M + PAD + CW * 0.6, y, { width: CW * 0.4 - PAD, align: 'right' });
       y += 13;
 
-      // No и Дата
       doc.font('B').fontSize(8);
       txt(`No:  ${tx.receipt_number}`, M + PAD, y);
       doc.font('R').fontSize(7);
       txt(`Дата:  ${date} г.`, M + PAD + 180, y);
       y += 12;
 
-      // Подписаният
       doc.font('R').fontSize(7);
       txt(`Подписаният  ${name}  ЕГН ${cu.egn || ''}  град (с) ${cu.city || ''}  община ${cu.municipality || ''}`, M + PAD, y, { width: CW - 2*PAD });
       y += 10;
       txt(`удостоверявам, че предадох:  адрес ${cu.address || ''}`, M + PAD, y, { width: CW - 2*PAD });
       y += 10;
 
-      // таблица
       table(
         [
           ['No', 'Наименование на предадените отпадъци', 'Мярка', 'Количество', 'Един. цена', 'Обща стойност'],
@@ -178,17 +141,14 @@ function buildPdf(tx: any, regBuf: Buffer, boldBuf: Buffer): Promise<Buffer> {
       );
       y += 2;
 
-      // Словом + сума
       twoColLine(`Словом общо: ${words}`, `Сума за плащане:  ${total.toFixed(2)} лв.`, 7);
-
-      // Изплатил / Получих сумата
       sigRow(
         `Изплатил: ${tx.operator_name || ''}`,
         'Получих сумата: (подпис на лицето, предало отпадъка)'
       );
     });
 
-    // ── ДЕКЛАРАЦИЯ ─────────────────────────────────────────────────
+    // Декларация
     section(() => {
       doc.font('B').fontSize(8);
       txt('Декларация за произход на отпадъци от черни и цветни метали', M + PAD, y, { width: CW * 0.65 });
@@ -213,7 +173,7 @@ function buildPdf(tx: any, regBuf: Buffer, boldBuf: Buffer): Promise<Buffer> {
       sigRow(`Дата: ${date}  гр./с.: ${cu.city || 'София'}`, `Декларатор: ${name}`);
     });
 
-    // ── ДОГОВОР ────────────────────────────────────────────────────
+    // Договор
     section(() => {
       doc.font('B').fontSize(8);
       txt(`Договор №${tx.contract_number || tx.receipt_number} / ${date} г.`, M + PAD, y, { width: CW - 2*PAD, align: 'center' });
@@ -224,7 +184,7 @@ function buildPdf(tx: any, regBuf: Buffer, boldBuf: Buffer): Promise<Buffer> {
       textLine(`${name} с адрес ${cu.address || ''}, ЕГН: ${cu.egn || ''}, л. к. ${cu.id_card_number || ''}, издадена от ${cu.id_card_issued_by || ''}, на ${cu.id_card_issued_date || ''}, наричан по-долу Продавач`);
       y += 2;
 
-      textLine('Предмет на договора. Страните се споразумяха за следното: Продавача прехвърля на Купувача правото на собственост и му предава стоката, описана по-горе в ПИС №' + tx.receipt_number + ' / ' + date + ', която е неразделна част от този договор, срещу задължението на Купувача да му заплати уговорената цена.');
+      textLine(`Предмет на договора. Страните се споразумяха за следното: Продавача прехвърля на Купувача правото на собственост и му предава стоката, описана по-горе в ПИС №${tx.receipt_number} / ${date}, която е неразделна част от този договор, срещу задължението на Купувача да му заплати уговорената цена.`);
 
       if (tx.payment_method !== 'cash') {
         textLine(`Плащането ще се извърши по сметка: ${tx.bank_account || ''}  ${tx.bank_name || ''}  ${tx.bank_bic || ''}`);
@@ -236,10 +196,7 @@ function buildPdf(tx: any, regBuf: Buffer, boldBuf: Buffer): Promise<Buffer> {
       sigRow(`Купувач: ${tx.operator_name || ''}`, `Продавач: ${name}`);
     });
 
-    // footer line
-    if (y < PH - 10) {
-      line(M, PH - 15, PW - M, PH - 15, 0.3);
-    }
+    if (y < PH - 10) line(M, PH - 15, PW - M, PH - 15, 0.3);
 
     doc.end();
   });
@@ -247,10 +204,6 @@ function buildPdf(tx: any, regBuf: Buffer, boldBuf: Buffer): Promise<Buffer> {
 
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-
-  let reg: Buffer, bold: Buffer;
-  try { [reg, bold] = await getFonts(); }
-  catch (e: any) { return new Response(`Font error: ${e?.message}`, { status: 500 }); }
 
   const supabase = createServerSupabase();
   const { data: tx, error } = await supabase
@@ -261,7 +214,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   if (error || !tx) return new Response('Not found', { status: 404 });
 
   try {
-    const buf = await buildPdf(tx, reg, bold);
+    const buf = await buildPdf(tx);
     return new Response(new Uint8Array(buf), {
       headers: {
         'Content-Type': 'application/pdf',
