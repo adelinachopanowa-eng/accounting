@@ -24,10 +24,10 @@ export default async function CustomerDetail({ params }: { params: Promise<{ id:
       <div className="card">
         <h2 className="text-lg font-semibold mb-4">Сделки</h2>
         <table className="w-full text-sm">
-          <thead className="text-left text-slate-500 border-b"><tr><th className="py-2">№</th><th>Дата</th><th className="text-right">Сума</th><th></th></tr></thead>
+          <thead className="text-left text-slate-500 border-b"><tr><th className="py-2">№</th><th>Дата</th><th className="text-right">Сума (EUR)</th><th></th></tr></thead>
           <tbody>
             {(tx || []).map((t: any) => (
-              <tr key={t.id} className="border-b"><td className="py-2">{t.receipt_number}</td><td>{format(new Date(t.transaction_date), 'dd.MM.yyyy')}</td><td className="text-right">{Number(t.total_amount).toFixed(2)} лв.</td><td><Link className="text-brand-600" href={`/api/pdf/${t.id}`}>PDF</Link></td></tr>
+              <tr key={t.id} className="border-b"><td className="py-2">{t.receipt_number}</td><td>{format(new Date(t.transaction_date), 'dd.MM.yyyy')}</td><td className="text-right">{Number(t.total_amount).toFixed(2)} EUR</td><td><Link className="text-brand-600" href={`/api/pdf/${t.id}`}>PDF</Link></td></tr>
             ))}
           </tbody>
         </table>

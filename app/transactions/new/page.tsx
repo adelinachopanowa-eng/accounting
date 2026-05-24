@@ -132,23 +132,23 @@ export default function NewTransactionPage() {
                 </select>
                 <div className="grid grid-cols-2 gap-2">
                   <div><label className="label text-xs">Количество (кг)</label><input type="number" step="0.001" className="input" value={it.quantity} onChange={e => updateItem(idx, { quantity: Number(e.target.value) })} /></div>
-                  <div><label className="label text-xs">Цена (лв/кг)</label><input type="number" step="0.0001" className="input" value={it.unit_price} onChange={e => updateItem(idx, { unit_price: Number(e.target.value) })} /></div>
+                  <div><label className="label text-xs">Цена (EUR/кг)</label><input type="number" step="0.0001" className="input" value={it.unit_price} onChange={e => updateItem(idx, { unit_price: Number(e.target.value) })} /></div>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="font-semibold text-brand-600">{it.total_price.toFixed(2)} лв.</span>
+                  <span className="font-semibold text-brand-600">{it.total_price.toFixed(2)} EUR</span>
                   <button className="text-red-500 text-sm" onClick={() => removeItem(idx)}>Изтрий</button>
                 </div>
               </div>
             ))}
             {items.length === 0 && <p className="text-slate-400 text-sm text-center py-4">Няма добавени артикули</p>}
-            <div className="text-right font-bold pt-2">Общо: {total.toFixed(2)} лв.</div>
+            <div className="text-right font-bold pt-2">Общо: {total.toFixed(2)} EUR <span className="font-normal text-slate-500">({(total * 1.95583).toFixed(2)} лв.)</span></div>
           </div>
 
           {/* Desktop: table */}
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-slate-500 border-b">
-                <tr><th className="py-2">Наименование</th><th>Количество (кг)</th><th>Цена</th><th>Сума</th><th></th></tr>
+                <tr><th className="py-2">Наименование</th><th>Количество (кг)</th><th>Цена (EUR/кг)</th><th>Сума (EUR)</th><th></th></tr>
               </thead>
               <tbody>
                 {items.map((it, idx) => (
@@ -160,13 +160,13 @@ export default function NewTransactionPage() {
                     </td>
                     <td><input type="number" step="0.001" className="input" value={it.quantity} onChange={e => updateItem(idx, { quantity: Number(e.target.value) })} /></td>
                     <td><input type="number" step="0.0001" className="input" value={it.unit_price} onChange={e => updateItem(idx, { unit_price: Number(e.target.value) })} /></td>
-                    <td className="font-semibold">{it.total_price.toFixed(2)} лв.</td>
+                    <td className="font-semibold">{it.total_price.toFixed(2)} EUR</td>
                     <td><button className="text-red-600" onClick={() => removeItem(idx)}>Изтрий</button></td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr><td colSpan={3} className="text-right font-bold pt-4">Общо:</td><td className="font-bold pt-4">{total.toFixed(2)} лв.</td><td></td></tr>
+                <tr><td colSpan={3} className="text-right font-bold pt-4">Общо:</td><td className="font-bold pt-4">{total.toFixed(2)} EUR <span className="font-normal text-slate-500">({(total * 1.95583).toFixed(2)} лв.)</span></td><td></td></tr>
               </tfoot>
             </table>
           </div>
@@ -211,13 +211,13 @@ export default function NewTransactionPage() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-t">
-              <thead><tr className="text-left text-slate-500"><th className="py-2">Артикул</th><th>Кол.</th><th>Цена</th><th>Сума</th></tr></thead>
+              <thead><tr className="text-left text-slate-500"><th className="py-2">Артикул</th><th>Кол.</th><th>Цена (EUR)</th><th>Сума (EUR)</th></tr></thead>
               <tbody>
                 {items.map((it, i) => (
                   <tr key={i}><td className="py-1 pr-2">{it.name}</td><td>{it.quantity}</td><td>{it.unit_price.toFixed(4)}</td><td>{it.total_price.toFixed(2)}</td></tr>
                 ))}
               </tbody>
-              <tfoot><tr><td colSpan={3} className="text-right font-bold pt-2">Общо:</td><td className="font-bold pt-2">{total.toFixed(2)} лв.</td></tr></tfoot>
+              <tfoot><tr><td colSpan={3} className="text-right font-bold pt-2">Общо:</td><td className="font-bold pt-2">{total.toFixed(2)} EUR <span className="font-normal text-slate-500">({(total * 1.95583).toFixed(2)} лв.)</span></td></tr></tfoot>
             </table>
           </div>
           <div className="flex justify-between">

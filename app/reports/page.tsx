@@ -18,7 +18,7 @@ export default function ReportsPage() {
   };
 
   const exportCSV = () => {
-    const headers = ['Категория', 'Количество (кг)', 'Сума (лв.)'];
+    const headers = ['Категория', 'Количество (кг)', 'Сума (EUR)'];
     const lines = [headers.join(','), ...rows.map(r => [r.label, r.quantity, r.amount].join(','))];
     const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -47,7 +47,7 @@ export default function ReportsPage() {
       </div>
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="text-left text-slate-500 border-b"><tr><th className="py-2">Категория</th><th className="text-right">Количество (кг)</th><th className="text-right">Сума (лв.)</th></tr></thead>
+          <thead className="text-left text-slate-500 border-b"><tr><th className="py-2">Категория</th><th className="text-right">Количество (кг)</th><th className="text-right">Сума (EUR)</th></tr></thead>
           <tbody>
             {rows.map((r, i) => (
               <tr key={i} className="border-b"><td className="py-2">{r.label}</td><td className="text-right">{Number(r.quantity).toFixed(3)}</td><td className="text-right">{Number(r.amount).toFixed(2)}</td></tr>

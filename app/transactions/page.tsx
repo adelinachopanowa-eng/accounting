@@ -21,7 +21,7 @@ export default async function TransactionsListPage() {
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-left text-slate-500 border-b">
-            <tr><th className="py-2">№ ПИС</th><th>Дата</th><th>Клиент</th><th>ЕГН</th><th>Плащане</th><th className="text-right">Сума</th><th></th></tr>
+            <tr><th className="py-2">№ ПИС</th><th>Дата</th><th>Клиент</th><th>ЕГН</th><th>Плащане</th><th className="text-right">Сума (EUR)</th><th></th></tr>
           </thead>
           <tbody>
             {(data || []).map((t: any) => (
@@ -31,7 +31,7 @@ export default async function TransactionsListPage() {
                 <td>{t.customers?.first_name} {t.customers?.last_name}</td>
                 <td className="font-mono text-xs">{t.customers?.egn}</td>
                 <td>{t.payment_method === 'cash' ? 'В брой' : 'По банка'}</td>
-                <td className="text-right">{Number(t.total_amount).toFixed(2)} лв.</td>
+                <td className="text-right">{Number(t.total_amount).toFixed(2)} EUR</td>
                 <td><Link className="text-brand-600 hover:underline" href={`/api/pdf/${t.id}`}>PDF</Link></td>
               </tr>
             ))}

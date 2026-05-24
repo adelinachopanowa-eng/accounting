@@ -58,7 +58,7 @@ export default async function DashboardPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-slate-500 border-b">
-              <tr><th className="py-2">№</th><th>Дата</th><th className="hidden sm:table-cell">Клиент</th><th className="text-right">Сума</th></tr>
+              <tr><th className="py-2">№</th><th>Дата</th><th className="hidden sm:table-cell">Клиент</th><th className="text-right">Сума (EUR)</th></tr>
             </thead>
             <tbody>
               {(recent || []).map((t: any) => (
@@ -66,7 +66,7 @@ export default async function DashboardPage() {
                   <td className="py-2"><Link className="text-brand-600 hover:underline" href={`/api/pdf/${t.id}`}>{t.receipt_number}</Link></td>
                   <td>{format(new Date(t.transaction_date), 'dd.MM.yy HH:mm')}</td>
                   <td className="hidden sm:table-cell">{t.customers?.first_name} {t.customers?.last_name}</td>
-                  <td className="text-right">{Number(t.total_amount).toFixed(2)} лв.</td>
+                  <td className="text-right">{Number(t.total_amount).toFixed(2)} EUR</td>
                 </tr>
               ))}
             </tbody>

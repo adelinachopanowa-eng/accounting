@@ -2,9 +2,9 @@ type Props = { stats: { todayAmount: number; todayWeight: number; monthAmount: n
 
 export default function StatsCards({ stats }: Props) {
   const cards = [
-    { label: 'Днес - сума', value: `${stats.todayAmount.toFixed(2)} лв.` },
+    { label: 'Днес - сума', value: `${stats.todayAmount.toFixed(2)} EUR` },
     { label: 'Днес - тегло', value: `${stats.todayWeight.toFixed(2)} кг` },
-    { label: 'Месец - сума', value: `${stats.monthAmount.toFixed(2)} лв.` },
+    { label: 'Месец - сума', value: `${stats.monthAmount.toFixed(2)} EUR` },
     { label: 'Месец - тегло', value: `${stats.monthWeight.toFixed(2)} кг` },
   ];
   return (
